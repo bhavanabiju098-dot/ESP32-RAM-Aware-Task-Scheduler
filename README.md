@@ -18,7 +18,7 @@ The system dynamically monitors available RAM and adjusts sensor task execution 
 
 The system is built around an ESP32 WROOM that monitors sensor tasks based on available RAM and task priority.
 
-![System Architecture](system_architecture.png)
+![System Architecture](docs/system_architecture.png)  
 
 The system follows a modular architecture where the ESP32 collects sensor data, 
 the RAM-aware scheduler prioritizes tasks based on available memory, and a 
@@ -72,14 +72,21 @@ A pre-allocated circular buffer is used to reduce unnecessary memory allocation.
 
 ```text
 ESP32-RAM-Aware-Task-Scheduler/
-├── main.py
-├── scheduler.py
-├── sensors.py
-├── buffer.py
-├── sd_logger.py
-├── web_server.py
-├── dashboard.html
+├── src/
+│   ├── main.py
+│   ├── scheduler.py
+│   ├── sensors.py
+│   ├── buffer.py
+│   ├── sd_logger.py
+│   ├── sdcard.py
+│   └── web_server.py
+├── dashboard/
+│   └── dashboard.html
+├── docs/
+│   ├── system_architecture.png
+│   └── dashboard.png
 ├── README.md
+├── LICENSE
 └── .gitignore
 ```
 
@@ -88,13 +95,15 @@ ESP32-RAM-Aware-Task-Scheduler/
 1. Install MicroPython on the ESP32-WROOM.
 2. Connect the required sensors and SD card module.
 3. Copy the project files to the ESP32.
-4. Configure Wi-Fi credentials in `web_server.py`.
-5. Run `main.py`.
+4. Configure Wi-Fi credentials in `src/web_server.py`.
+5. Run `src/main.py`.
 6. Monitor sensor readings and scheduler activity through the serial output or web dashboard.
 
 ## Web Dashboard
 
 The ESP32 hosts a lightweight web dashboard for real-time system monitoring.
+
+![Web Dashboard](docs/dashboard.png)
 
 The dashboard displays:
 
