@@ -19,6 +19,7 @@ The system dynamically monitors available RAM and adjusts sensor task execution 
 The system is built around an ESP32 WROOM that monitors sensor tasks based on available RAM and task priority.
 
 ![System Architecture](system_architecture.png)
+
 The system follows a modular architecture where the ESP32 collects sensor data, 
 the RAM-aware scheduler prioritizes tasks based on available memory, and a 
 shared buffer temporarily stores readings before they are written to the SD card.
@@ -26,57 +27,103 @@ shared buffer temporarily stores readings before they are written to the SD card
 The ESP32 can also host a lightweight web server that provides live sensor and 
 scheduler information through a browser dashboard.
 
-## Hardware
+## Task Priority
+
+| Priority | Task |
+|----------|------|
+| P1 | MQ4 Gas Monitoring |
+| P2 | DHT11 Temperature & Humidity |
+| P3 | IR Detection |
+| P4 | Sound Monitoring |
+
+Higher-priority tasks are retained when memory becomes limited, while lower-priority tasks are skipped first.
+
+## Memory Management
+
+The scheduler monitors available heap memory using `gc.mem_free()` and dynamically adjusts task execution.
+
+| Free RAM | Tasks Executed |
+|----------|----------------|
+| ≥ 40 KB | P1–P4 |
+| ≥ 28 KB | P1–P3 |
+| ≥ 16 KB | P1–P2 |
+| < 16 KB | P1 only |
+
+A pre-allocated circular buffer is used to reduce unnecessary memory allocation.
+
+## Hardware Requirements
 
 - ESP32-WROOM
-- DHT11 temperature and humidity sensor
-- MQ-4 gas sensor
-- IR obstacle sensor
-- Sound sensor
-- MicroSD card module
+- MQ-4 Gas Sensor
+- DHT11 Sensor
+- IR Sensor
+- Sound Sensor
+- MicroSD Card Module & Card
 
-## Software
+## Software & Tools
 
 - MicroPython
 - Thonny IDE
-- VS Code
-- Git / GitHub
-
-## Sensor Task Priorities
-
-| Priority | Sensor | Purpose |
-|----------|--------|---------|
-| P1 | MQ-4 | Gas safety monitoring |
-| P2 | DHT11 | Temperature and humidity |
-| P3 | IR | Obstacle detection |
-| P4 | Sound | Sound-level monitoring |
-
-When available RAM decreases, lower-priority tasks are skipped first.
-
-## Memory-Aware Scheduling
-
-The scheduler divides available memory into different tiers:
-
-| Memory Condition | Tasks Executed |
-|------------------|----------------|
-| High memory | P1 + P2 + P3 + P4 |
-| Moderate memory | P1 + P2 + P3 |
-| Low memory | P1 + P2 |
-| Critical memory | P1 only |
-
-This allows the system to prioritize essential tasks instead of allowing memory pressure to affect the entire application.
+- Visual Studio Code
+- Git & GitHub
+- HTML, CSS & JavaScript
 
 ## Project Structure
 
 ```text
 ESP32-RAM-Aware-Task-Scheduler/
-│
 ├── main.py
-├── sensors.py
 ├── scheduler.py
+├── sensors.py
 ├── buffer.py
 ├── sd_logger.py
 ├── web_server.py
 ├── dashboard.html
 ├── README.md
 └── .gitignore
+```
+
+## Setup & Usage
+
+1. Install MicroPython on the ESP32-WROOM.
+2. Connect the required sensors and SD card module.
+3. Copy the project files to the ESP32.
+4. Configure Wi-Fi credentials in `web_server.py`.
+5. Run `main.py`.
+6. Monitor sensor readings and scheduler activity through the serial output or web dashboard.
+
+## Web Dashboard
+
+The ESP32 hosts a lightweight web dashboard for real-time system monitoring.
+
+The dashboard displays:
+
+- Available RAM
+- Current memory tier
+- Running and skipped tasks
+- Live sensor readings
+- Scheduler status
+
+## Data Logging
+
+Sensor readings and scheduler information are stored on the MicroSD card as CSV files.
+
+- `sensor_log.csv` — sensor readings
+- `scheduler_log.csv` — memory status and task execution information
+
+## Future Improvements
+
+- Dynamic task loading from the SD card
+- Improved memory usage analysis
+- More sensors and task types
+- Enhanced web dashboard
+- Remote configuration and monitoring
+
+## Author
+
+**Bhavana Biju**  
+**Arya Anil**  
+
+## License
+
+This project is licensed under the MIT License.
