@@ -1,20 +1,30 @@
 # ESP32 RAM-Aware Task Scheduler
 
-A memory-aware task scheduling system built on an ESP32 using MicroPython.
+A MicroPython-based task scheduling system for the ESP32 that dynamically manages sensor tasks according to available RAM.
 
-The system dynamically monitors available RAM and adjusts sensor task execution based on memory availability. Higher-priority tasks are preserved when memory becomes limited, while lower-priority tasks are skipped to maintain system stability.
+The system dynamically monitors available RAM and adjusts sensor task execution based on memory availability. Higher-priority tasks are preserved when memory becomes limited, while lower-priority tasks are skipped to maintain system stability. Sensor readings are buffered in RAM and periodically stored on an SD card, with a Wi-Fi interface providing live system status.
 
 ## Features
 
-- Dynamic RAM monitoring using `gc.mem_free()`
-- Priority-based sensor task scheduling
-- Memory-aware task execution
-- Circular buffer for temporary sensor storage
-- Periodic SD-card logging
-- Wi-Fi connectivity
-- HTTP server for live sensor and scheduler data
-- Web-based monitoring dashboard
-- Graceful handling of sensor and SD-card errors
+- **RAM-aware scheduling** — Monitors available ESP32 heap memory at runtime.
+- **Priority-based execution** — Assigns different priorities to sensor tasks based on importance.
+- **Dynamic task skipping** — Suspends lower-priority tasks when available memory decreases.
+- **Circular buffering** — Temporarily stores sensor readings before SD-card writes.
+- **SD-card logging** — Stores sensor readings and scheduler decisions in CSV files.
+- **Wi-Fi monitoring** — Provides HTTP endpoints for live system and sensor data.
+- **Fault-tolerant operation** — Handles sensor, SD-card, and network errors without unnecessarily stopping the scheduler.
+
+## System Architecture
+
+The system is built around an ESP32 WROOM that monitors sensor tasks based on available RAM and task priority.
+
+![System Architecture](system_architecture.png)
+The system follows a modular architecture where the ESP32 collects sensor data, 
+the RAM-aware scheduler prioritizes tasks based on available memory, and a 
+shared buffer temporarily stores readings before they are written to the SD card.
+
+The ESP32 can also host a lightweight web server that provides live sensor and 
+scheduler information through a browser dashboard.
 
 ## Hardware
 
