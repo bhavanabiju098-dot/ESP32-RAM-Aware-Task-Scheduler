@@ -1,0 +1,9 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# MicroPython / device files
+.boot.py

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ESP32 Scheduler Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ── Design tokens ─────────────────────────────────────────────────────── */
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #21262d;
+    --text:      #e6edf3;
+    --muted:     #7d8590;
+    --green:     #3fb950;
+    --amber:     #d29922;
+    --red:       #f85149;
+    --blue:      #58a6ff;
+    --purple:    #bc8cff;
+    --teal:      #39d0d8;
+    --font-mono: "JetBrains Mono", "Fira Code", monospace;
+    --font-ui:   "Inter", system-ui, sans-serif;
+    --radius:    8px;
+    --poll-ms:   2000;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    min-height: 100vh;
+    padding: 24px 20px 48px;
+  }
+
+  /* ── Header ────────────────────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
+  }
+  header h1 {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--blue);
+  }
+  header h1 span { color: var(--muted); font-weight: 400; }
+
+  #conn-status {
+    margin-left: auto;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: color .3s, border-color .3s;
+  }
+  #conn-status.ok  { color: var(--green); border-color: var(--green); }
+  #conn-status.err { color: var(--red);   border-color: var(--red);   }
+
+  /* ── IP config bar ──────────────────────────────────────────────────────── */
+  #config-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 24px;
+    font-size: 0.82rem;
+  }
+  #config-bar label { color: var(--muted); white-space: nowrap; }
+  #esp-ip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    width: 180px;
+  }
+  #esp-ip:focus { outline: none; border-color: var(--blue); }
+  button#connect-btn {
+    background: var(--blue);
+    color: #0d1117;
+    border: none;
+    padding: 6px 16px;
+    border-radius: var(--radius);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button#connect-btn:hover { opacity: 0.85; }
+
+  /* ── RAM tier badge ─────────────────────────────────────────────────────── */
+  #tier-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 3px 10px;
+    border-radius: 4px;
+    background: var(--green);
+    color: #0d1117;
+    transition: background .4s;
+  }
+  #tier-badge.SKIP_P4    { background: var(--amber); }
+  #tier-badge.SKIP_P3_P4 { background: #e3612a; }
+  #tier-badge.EMERGENCY  { background: var(--red); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* ── Stat row ───────────────────────────────────────────────────────────── */
+  #stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .stat-card .label {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .stat-card .value {
+    font-family: var(--font-mono);
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+  .stat-card .unit {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-left: 3px;
+  }
+
+  /* ── Sensor grid ────────────────────────────────────────────────────────── */
+  #sensor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .sensor-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .sensor-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    border-radius: var(--radius) 0 0 var(--radius);
+  }
+  .sensor-card.mq4::before   { background: var(--red); }
+  .sensor-card.dht11::before { background: var(--teal); }
+  .sensor-card.ir::before    { background: var(--purple); }
+  .sensor-card.sound::before { background: var(--amber); }
+
+  .sensor-card .s-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .sensor-card .s-name {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .sensor-card.mq4   .s-name { color: var(--red); }
+  .sensor-card.dht11 .s-name { color: var(--teal); }
+  .sensor-card.ir    .s-name { color: var(--purple); }
+  .sensor-card.sound .s-name { color: var(--amber); }
+
+  .run-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background .3s;
+  }
+  .run-dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .run-dot.skipped { background: var(--muted); }
+
+  .sensor-card .s-rows { display: flex; flex-direction: column; gap: 6px; }
+  .s-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.82rem;
+  }
+  .s-row .k { color: var(--muted); }
+  .s-row .v {
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    color: var(--text);
+  }
+
+  /* ── Charts ─────────────────────────────────────────────────────────────── */
+  #chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 640px) { #chart-grid { grid-template-columns: 1fr; } }
+
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .chart-card h3 {
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .chart-card canvas { max-height: 180px; }
+
+  /* ── Scheduler task timeline ─────────────────────────────────────────────── */
+  #timeline-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+  #timeline-card h3 {
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  #task-lanes { display: flex; flex-direction: column; gap: 8px; }
+  .task-lane { display: flex; align-items: center; gap: 10px; }
+  .lane-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    width: 52px;
+    text-align: right;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .lane-track {
+    flex: 1;
+    height: 18px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    padding: 0 2px;
+  }
+  .lane-cell {
+    flex: 1;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background .2s;
+    min-width: 4px;
+  }
+  .lane-cell.ran     { background: var(--green); }
+  .lane-cell.skipped { background: var(--border); }
+
+  /* ── Footer ─────────────────────────────────────────────────────────────── */
+  footer {
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ESP32 <span>/</span> Scheduler Dashboard</h1>
+  <div id="conn-status">● disconnected</div>
+</header>
+
+<div id="config-bar">
+  <label>ESP32 IP</label>
+  <input id="esp-ip" type="text" value="192.168.1.100" placeholder="e.g. 192.168.1.42"/>
+  <button id="connect-btn">Connect</button>
+  <span id="tier-badge" class="ALL">ALL</span>
+</div>
+
+<!-- Stat row -->
+<div id="stat-row">
+  <div class="stat-card">
+    <div class="label">Free RAM</div>
+    <div class="value" id="s-ram">—<span class="unit">B</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Tick #</div>
+    <div class="value" id="s-tick">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Temperature</div>
+    <div class="value" id="s-temp">—<span class="unit">°C</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Humidity</div>
+    <div class="value" id="s-humid">—<span class="unit">%</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Gas Rs/Ro</div>
+    <div class="value" id="s-rsro">—</div>
+  </div>
+</div>
+
+<!-- Sensor cards -->
+<div id="sensor-grid">
+
+  <div class="sensor-card mq4">
+    <div class="s-header">
+      <span class="s-name">MQ4 · P1</span>
+      <div class="run-dot" id="dot-mq4"></div>
+    </div>
+    <div class="s-rows">
+      <div class="s-row"><span class="k">ADC raw</span><span class="v" id="mq4-raw">—</span></div>
+      <div class="s-row"><span class="k">Voltage</span><span class="v" id="mq4-v">— V</span></div>
+      <div class="s-row"><span class="k">Rs/Ro</span><span class="v" id="mq4-rs">—</span></div>
+    </div>
+  </div>
+
+  <div class="sensor-card dht11">
+    <div class="s-header">
+      <span class="s-name">DHT11 · P2</span>
+      <div class="run-dot" id="dot-dht11"></div>
+    </div>
+    <div class="s-rows">
+      <div class="s-row"><span class="k">Temp</span><span class="v" id="dht-temp">— °C</span></div>
+      <div class="s-row"><span class="k">Humidity</span><span class="v" id="dht-humid">— %</span></div>
+    </div>
+  </div>
+
+  <div class="sensor-card ir">
+    <div class="s-header">
+      <span class="s-name">IR · P3</span>
+      <div class="run-dot" id="dot-ir"></div>
+    </div>
+    <div class="s-rows">
+      <div class="s-row"><span class="k">Object</span><span class="v" id="ir-val">—</span></div>
+    </div>
+  </div>
+
+  <div class="sensor-card sound">
+    <div class="s-header">
+      <span class="s-name">Sound · P4</span>
+      <div class="run-dot" id="dot-sound"></div>
+    </div>
+    <div class="s-rows">
+      <div class="s-row"><span class="k">ADC raw</span><span class="v" id="sound-raw">—</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Charts -->
+<div id="chart-grid">
+  <div class="chart-card">
+    <h3>Free RAM over time</h3>
+    <canvas id="chart-ram"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>Temperature &amp; Humidity</h3>
+    <canvas id="chart-dht"></canvas>
+  </div>
+</div>
+
+<!-- Task timeline -->
+<div id="timeline-card">
+  <h3>Task schedule — last 40 ticks</h3>
+  <div id="task-lanes">
+    <div class="task-lane">
+      <span class="lane-label">MQ4</span>
+      <div class="lane-track" id="lane-mq4"></div>
+    </div>
+    <div class="task-lane">
+      <span class="lane-label">DHT11</span>
+      <div class="lane-track" id="lane-dht11"></div>
+    </div>
+    <div class="task-lane">
+      <span class="lane-label">IR</span>
+      <div class="lane-track" id="lane-ir"></div>
+    </div>
+    <div class="task-lane">
+      <span class="lane-label">Sound</span>
+      <div class="lane-track" id="lane-sound"></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span id="f-last">Last update: —</span>
+  <span id="f-poll">Poll: 2 s</span>
+  <span id="f-emergency"></span>
+</footer>
+
+<script>
+// ── Config ─────────────────────────────────────────────────────────────────
+const POLL_MS    = 2000;
+const MAX_POINTS = 60;    // chart history length
+const LANE_CELLS = 40;    // task timeline history
+
+// ── State ──────────────────────────────────────────────────────────────────
+let espIP      = "192.168.0.150";
+let pollTimer  = null;
+
+const history = {
+  ram:   [],
+  temp:  [],
+  humid: [],
+  tasks: { mq4: [], dht11: [], ir: [], sound: [] },
+};
+
+// ── Chart setup ────────────────────────────────────────────────────────────
+const chartDefaults = {
+  type: "line",
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: { legend: { labels: { color: "#7d8590", font: { size: 11 } } } },
+    scales: {
+      x: { display: false },
+      y: { grid: { color: "#21262d" }, ticks: { color: "#7d8590", font: { size: 11 } } }
+    },
+    elements: { point: { radius: 0 }, line: { borderWidth: 2 } }
+  }
+};
+
+const ramChart = new Chart(document.getElementById("chart-ram"), {
+  ...chartDefaults,
+  data: {
+    labels: [],
+    datasets: [{
+      label: "Free RAM (bytes)",
+      data: [],
+      borderColor: "#58a6ff",
+      backgroundColor: "rgba(88,166,255,0.08)",
+      fill: true,
+      tension: 0.3,
+    }]
+  }
+});
+
+const dhtChart = new Chart(document.getElementById("chart-dht"), {
+  ...chartDefaults,
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: "Temp °C",
+        data: [],
+        borderColor: "#39d0d8",
+        tension: 0.3,
+      },
+      {
+        label: "Humidity %",
+        data: [],
+        borderColor: "#bc8cff",
+        tension: 0.3,
+      }
+    ]
+  }
+});
+
+// ── Task timeline ──────────────────────────────────────────────────────────
+function buildLanes() {
+  ["mq4","dht11","ir","sound"].forEach(name => {
+    const track = document.getElementById("lane-" + name);
+    track.innerHTML = "";
+    for (let i = 0; i < LANE_CELLS; i++) {
+      const cell = document.createElement("div");
+      cell.className = "lane-cell";
+      track.appendChild(cell);
+    }
+  });
+}
+
+function updateLanes() {
+  ["mq4","dht11","ir","sound"].forEach(name => {
+    const cells = document.getElementById("lane-" + name).children;
+    const hist  = history.tasks[name];
+    for (let i = 0; i < LANE_CELLS; i++) {
+      const hIdx = hist.length - LANE_CELLS + i;
+      if (hIdx < 0) {
+        cells[i].className = "lane-cell";
+      } else {
+        cells[i].className = "lane-cell " + (hist[hIdx] ? "ran" : "skipped");
+      }
+    }
+  });
+}
+
+// ── DOM helpers ────────────────────────────────────────────────────────────
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function setDot(sensor, ran) {
+  const el = document.getElementById("dot-" + sensor);
+  if (!el) return;
+  el.className = "run-dot " + (ran ? "active" : "skipped");
+}
+
+// ── Fetch + render ─────────────────────────────────────────────────────────
+async function fetchData() {
+  const url = "http://" + espIP + "/data";
+  try {
+    const res  = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    const data = await res.json();
+    render(data);
+    setStatus(true);
+  } catch (e) {
+    setStatus(false);
+  }
+}
+
+function render(d) {
+  const ran = d.ran || [];
+
+  // Connection status + tier badge
+  const badge = document.getElementById("tier-badge");
+  badge.textContent = d.tier || "ALL";
+  badge.className   = d.tier || "ALL";
+
+  // Stat row
+  setText("s-ram",   d.free_ram ?? "—");
+  setText("s-tick",  d.tick ?? "—");
+  setText("s-temp",  d.sensors?.dht11?.temp  ?? "—");
+  setText("s-humid", d.sensors?.dht11?.humid ?? "—");
+  setText("s-rsro",  d.sensors?.mq4?.rs_ro   ?? "—");
+
+  // MQ4
+  setText("mq4-raw", d.sensors?.mq4?.raw     ?? "—");
+  setText("mq4-v",   (d.sensors?.mq4?.voltage ?? "—") + " V");
+  setText("mq4-rs",  d.sensors?.mq4?.rs_ro   ?? "—");
+  setDot("mq4", ran.includes("mq4"));
+
+  // DHT11
+  setText("dht-temp",  (d.sensors?.dht11?.temp  ?? "—") + " °C");
+  setText("dht-humid", (d.sensors?.dht11?.humid ?? "—") + " %");
+  setDot("dht11", ran.includes("dht11"));
+
+  // IR
+  const irVal = d.sensors?.ir?.detected;
+  setText("ir-val", irVal === null || irVal === undefined ? "—" : irVal ? "DETECTED" : "clear");
+  setDot("ir", ran.includes("ir"));
+
+  // Sound
+  setText("sound-raw", d.sensors?.sound?.raw ?? "—");
+  setDot("sound", ran.includes("sound"));
+
+  // Push history
+  const now = new Date().toLocaleTimeString();
+  pushHistory(ramChart, now, d.free_ram ?? 0, "ram");
+  pushDHT(now, d.sensors?.dht11?.temp, d.sensors?.dht11?.humid);
+
+  // Task history
+  ["mq4","dht11","ir","sound"].forEach(name => {
+    history.tasks[name].push(ran.includes(name));
+    if (history.tasks[name].length > LANE_CELLS) history.tasks[name].shift();
+  });
+  updateLanes();
+
+  // Emergency banner
+  const femerg = document.getElementById("f-emergency");
+  femerg.textContent = d.emergency ? "⚠ EMERGENCY — GC forced" : "";
+  femerg.style.color = d.emergency ? "var(--red)" : "";
+
+  // Footer timestamp
+  setText("f-last", "Last update: " + now);
+}
+
+function pushHistory(chart, label, value, key) {
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(value);
+  if (chart.data.labels.length > MAX_POINTS) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+  }
+  chart.update("none");
+}
+
+function pushDHT(label, temp, humid) {
+  dhtChart.data.labels.push(label);
+  dhtChart.data.datasets[0].data.push(temp ?? null);
+  dhtChart.data.datasets[1].data.push(humid ?? null);
+  if (dhtChart.data.labels.length > MAX_POINTS) {
+    dhtChart.data.labels.shift();
+    dhtChart.data.datasets[0].data.shift();
+    dhtChart.data.datasets[1].data.shift();
+  }
+  dhtChart.update("none");
+}
+
+function setStatus(ok) {
+  const el = document.getElementById("conn-status");
+  el.textContent = ok ? "● live" : "● disconnected";
+  el.className   = ok ? "ok"    : "err";
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+document.getElementById("connect-btn").addEventListener("click", () => {
+  espIP = document.getElementById("esp-ip").value.trim();
+  if (pollTimer) clearInterval(pollTimer);
+  fetchData();
+  pollTimer = setInterval(fetchData, POLL_MS);
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+buildLanes();
+// Auto-start polling with default/saved IP
+pollTimer = setInterval(fetchData, POLL_MS);
+fetchData();
+</script>
+</body>
+</html>
