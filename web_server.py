@@ -149,36 +149,48 @@ def start(port=80):
 # Data update
 # ─────────────────────────────────────────────────────────────────────────────
 
-def update_data(tick_result, readings):
+def update_data(tick_result):
     """
-    Update the web dashboard with the latest scheduler results.
+    Update the latest scheduler and sensor data for the dashboard.
 
-    Parameters:
-        tick_info:
-            Dictionary returned by scheduler.schedule_tasks().
+    Uses the result returned by scheduler.schedule_tasks().
     """
-    
-    _latest["tick"]      = tick_result["tick"]
-    _latest["free_ram"]  = tick_result["free_ram"]
-    _latest["tier"]      = _tier_label(tick_result["free_ram"])
-    _latest["ran"]       = tick_result["ran"]
-    _latest["skipped"]   = tick_result["skipped"]
-    _latest["emergency"] = tick_result["emergency"]
 
-    # Unpack each sensor reading into named fields
-    if "mq4" in readings and readings["mq4"]:
-        raw, v, rs = readings["mq4"]
-        _latest["sensors"]["mq4"] = {"raw": raw, "voltage": v, "rs_ro": rs}
+    _latest["free_ram"] = tick_result.get("free_ram", 0)
+    _latest["tier"] = tick_result.get("tier", "UNKNOWN")
+    _latest["ran"] = tick_result.get("ran", [])
+    _latest["skipped"] = tick_result.get("skipped", [])
 
-    if "dht11" in readings and readings["dht11"]:
-        t, h = readings["dht11"]
-        _latest["sensors"]["dht11"] = {"temp": t, "humid": h}
+    results = tick_result.get("results", {})
 
-    if "ir" in readings:
-        _latest["sensors"]["ir"] = {"detected": readings["ir"]}
+    # MQ4
+    if "mq4" in results and results["mq4"] is not None:
+        raw, voltage, rs_ro = results["mq4"]
+        _latest["sensors"]["mq4"] = {
+            "raw": raw,
+            "voltage": voltage,
+            "rs_ro": rs_ro
+        }
 
-    if "sound" in readings:
-        _latest["sensors"]["sound"] = {"raw": readings["sound"]}
+    # DHT11
+    if "dht11" in results and results["dht11"] is not None:
+        temp, humid = results["dht11"]
+        _latest["sensors"]["dht11"] = {
+            "temp": temp,
+            "humid": humid
+        }
+
+    # IR
+    if "ir" in results and results["ir"] is not None:
+        _latest["sensors"]["ir"] = {
+            "detected": results["ir"]
+        }
+
+    # Sound
+    if "sound" in results and results["sound"] is not None:
+        _latest["sensors"]["sound"] = {
+            "raw": results["sound"]
+        }
 
 
 def _tier_label(free_ram):

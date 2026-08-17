@@ -24,7 +24,7 @@ import time
 # ─────────────────────────────────────────────────────────────────────────────
 
 DHT11_PIN = 4        # GPIO4  — digital input
-IR_PIN    = 15       # GPIO15 — digital input
+IR_PIN    = 27       # GPIO27 — digital input
 SOUND_PIN = 34       # GPIO34 — ADC input
 MQ4_PIN   = 35       # GPIO35 — ADC input
 
